@@ -1,0 +1,87 @@
+name: Build and Push
+run-name: ${{ gitea.actor }} build ${{ github.sha }}
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  REGISTRY_GITEA: nas.kadrlik.home:3042
+  REGISTRY_GHCR: ghcr.io
+  IMAGE_NAME: mkadrlik/llama-cpp-mtp-tq
+  UPSTREAM_REPO: https://github.com/ggml-org/llama.cpp.git
+  UPSTREAM_BRANCH: master
+
+jobs:
+  check-upstream:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.get-sha.outputs.sha }}
+      changed: ${{ steps.check.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get upstream HEAD
+        id: get-sha
+        run: |
+          SHA=$(git ls-remote ${{ env.UPSTREAM_REPO }} refs/heads/${{ env.UPSTREAM_BRANCH }} | cut -f1)
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+      - name: Check if changed
+        id: check
+        run: |
+          OLD=$(cat .upstream-hash 2>/dev/null || echo "none")
+          NEW="${{ steps.get-sha.outputs.sha }}"
+          if [ "$OLD" != "$NEW" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "Upstream changed: $OLD → $NEW"
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Update pin
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          echo "${{ steps.get-sha.outputs.sha }}" > .upstream-hash
+          sed -i "s|^ARG UPSTREAM_SHA=.*|ARG UPSTREAM_SHA=${{ steps.get-sha.outputs.sha }}|" Dockerfile
+          git config user.name "hermes-bot"
+          git config user.email "hermes-bot@kadrlik.me"
+          git add .upstream-hash Dockerfile
+          git commit -m "sync: pin to mainline ${{ steps.get-sha.outputs.sha }}"
+          git push origin HEAD:main
+
+  build:
+    needs: check-upstream
+    if: always() && (needs.check-upstream.outputs.changed == 'true' || github.event_name != 'schedule')
+    runs-on: rocm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to Gitea registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY_GITEA }}
+          username: mkadrlik
+          password: ${{ secrets.GITEA_REGISTRY_TOKEN }}
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY_GHCR }}
+          username: mkadrlik
+          password: ${{ secrets.GHCR_TOKEN }}
+      - name: Extract metadata
+        id: meta
+        run: |
+          SHA=$(cat .upstream-hash | head -1 | cut -c1-7)
+          DATE=$(date +%Y.%m.%d)
+          echo "tags=${{ env.REGISTRY_GITEA }}/${{ env.IMAGE_NAME }}:${DATE}-${SHA},${{ env.REGISTRY_GITEA }}/${{ env.IMAGE_NAME }}:${DATE},${{ env.REGISTRY_GITEA }}/${{ env.IMAGE_NAME }}:latest,${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${DATE}-${SHA},${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${DATE},${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_OUTPUT
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          build-args: |
+            UPSTREAM_SHA=${{ steps.get-sha.outputs.sha }}

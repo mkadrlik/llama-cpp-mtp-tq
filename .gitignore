@@ -1,0 +1,29 @@
+# Build artifacts
+build/
+build-bin/
+*.o
+*.so
+*.so.*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+*.pem
+*.key
+
+# GGUF models (too large)
+*.gguf
+
+# Temp
+/tmp/
+*.tmp
+*.bak

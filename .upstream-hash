@@ -1,0 +1,4 @@
+# .upstream-hash
+# Tracks the pinned mainline llama.cpp commit SHA.
+# CI auto-updates this file when upstream changes.
+# Format: <full commit SHA>

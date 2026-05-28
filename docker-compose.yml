@@ -1,0 +1,32 @@
+services:
+  llama-cpp-mtp-tq:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nas.kadrlik.home:3042/mkadrlik/llama-cpp-mtp-tq:latest
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    ports:
+      - "8081:8080"
+    environment:
+      HSA_OVERRIDE_GFX_VERSION: "11.0.0"
+      HIP_VISIBLE_DEVICES: "0,1,2"
+    volumes:
+      - /path/to/models:/models:ro
+    command:
+      - -m
+      - /models/model.gguf
+      - -c
+      - "8192"
+      - -fa
+      - on
+      - -ctk
+      - tbq3
+      - -ctv
+      - tbq3
+      - --spec-type
+      - draft-mtp
+      - --spec-draft-n-max
+      - "2"
+    restart: unless-stopped
