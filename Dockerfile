@@ -35,14 +35,14 @@ RUN if [ -n "${UPSTREAM_SHA}" ]; then \
 # Build with ROCm HIP backend
 # GGML_HIP=ON enables the HIP/ROCm backend for AMD GPU compute
 # GGML_HIP_ROCWMMA_FATTN=ON enables rocWMMA flash attention (RDNA3 optimization)
-# GPU_TARGETS=gfx1100 matches RX 7900 XT/XTX (RDNA3)
+# GPU_TARGETS defaults to native (auto-detected)
 RUN HIPCXX="$(hipconfig -l)/clang" \
     HIP_PATH="$(hipconfig -R)" \
     cmake -B build \
         -DGGML_HIP=ON \
         -DGGML_HIP_ROCWMMA_FATTN=ON \
         -DCMAKE_BUILD_TYPE=Release \
-    && cmake --build build --config Release -j$(nproc) --target llama-server
+    && cmake --build build --config Release -j$(nproc)
 
 ###############################################################################
 # Runtime image
@@ -56,12 +56,14 @@ RUN apt-get update && apt-get install -y \
     libopenblas0-pthread \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy built binaries + shared libs
+# Copy built binaries
 COPY --from=builder /opt/llama.cpp/build/bin/llama-server /usr/local/bin/
 COPY --from=builder /opt/llama.cpp/build/bin/llama-bench /usr/local/bin/
-COPY --from=builder /opt/llama.cpp/build/bin/llama-quantize /usr/local/bin/
-COPY --from=builder /opt/llama.cpp/build/bin/libggml*.so* /usr/local/lib/
-COPY --from=builder /opt/llama.cpp/build/bin/libllama*.so* /usr/local/lib/
+
+# Copy shared libs (some may not exist depending on build config)
+RUN for f in /opt/llama.cpp/build/bin/libggml*.so* /opt/llama.cpp/build/bin/libllama*.so*; do \
+        [ -f "$f" ] && cp "$f" /usr/local/lib/ || true; \
+    done
 
 # Copy ROCm runtime libraries
 COPY --from=builder /opt/rocm/lib/ /opt/rocm/lib/
