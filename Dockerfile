@@ -50,7 +50,8 @@ RUN mkdir -p /opt/export/bin /opt/export/lib && \
     cp /opt/llama.cpp/build/bin/llama-server /opt/export/bin/ && \
     cp /opt/llama.cpp/build/bin/llama-bench /opt/export/bin/ 2>/dev/null; \
     cp /opt/llama.cpp/build/bin/libggml*.so* /opt/export/lib/ 2>/dev/null; \
-    cp /opt/llama.cpp/build/bin/libllama*.so* /opt/export/lib/ 2>/dev/null; true
+    cp /opt/llama.cpp/build/bin/libllama*.so* /opt/export/lib/ 2>/dev/null; \
+    cp /opt/llama.cpp/build/bin/libmtmd*.so* /opt/export/lib/ 2>/dev/null; true
 
 ###############################################################################
 # Runtime image
