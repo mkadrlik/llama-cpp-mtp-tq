@@ -44,6 +44,14 @@ RUN HIPCXX="$(hipconfig -l)/clang" \
         -DCMAKE_BUILD_TYPE=Release \
     && cmake --build build --config Release -j$(nproc)
 
+# Consolidate build artifacts into /opt/export for reliable copying
+# (handles the case where files may or may not exist)
+RUN mkdir -p /opt/export/bin /opt/export/lib && \
+    cp /opt/llama.cpp/build/bin/llama-server /opt/export/bin/ && \
+    cp /opt/llama.cpp/build/bin/llama-bench /opt/export/bin/ 2>/dev/null; \
+    cp /opt/llama.cpp/build/bin/libggml*.so* /opt/export/lib/ 2>/dev/null; \
+    cp /opt/llama.cpp/build/bin/libllama*.so* /opt/export/lib/ 2>/dev/null; true
+
 ###############################################################################
 # Runtime image
 ###############################################################################
@@ -56,14 +64,10 @@ RUN apt-get update && apt-get install -y \
     libopenblas0-pthread \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy built binaries
-COPY --from=builder /opt/llama.cpp/build/bin/llama-server /usr/local/bin/
-COPY --from=builder /opt/llama.cpp/build/bin/llama-bench /usr/local/bin/
-
-# Copy shared libs (some may not exist depending on build config)
-RUN for f in /opt/llama.cpp/build/bin/libggml*.so* /opt/llama.cpp/build/bin/libllama*.so*; do \
-        [ -f "$f" ] && cp "$f" /usr/local/lib/ || true; \
-    done
+# Copy built binaries and shared libs from export directory
+COPY --from=builder /opt/export/bin/llama-server /usr/local/bin/
+COPY --from=builder /opt/export/bin/llama-bench /usr/local/bin/
+COPY --from=builder /opt/export/lib/ /usr/local/lib/
 
 # Copy ROCm runtime libraries
 COPY --from=builder /opt/rocm/lib/ /opt/rocm/lib/
