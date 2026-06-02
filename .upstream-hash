@@ -1,5 +1,1 @@
-# .upstream-hash
-# Tracks the pinned mainline llama.cpp commit SHA.
-# CI auto-updates this file when upstream changes.
-# Format: <full commit SHA>
-1fd5f4803713ea3e1eda326483c9cc71a572cf02
+0a635dcd92ba66c75fccfef91c3e106f4668f367 Merge pull request #14 from AtomicBot-ai/b1-mtp-qwen-rebase
