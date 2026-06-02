@@ -22,9 +22,9 @@ services:
       - -fa
       - on
       - -ctk
-      - tbq3
+      - q8_0
       - -ctv
-      - tbq3
+      - q8_0
       - --spec-type
       - draft-mtp
       - --spec-draft-n-max

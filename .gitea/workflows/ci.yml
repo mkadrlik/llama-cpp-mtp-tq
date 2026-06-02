@@ -1,5 +1,6 @@
 name: Build and Push
 run-name: ${{ gitea.actor }} build ${{ github.sha }}
+
 on:
   schedule:
     - cron: '0 6 * * *'
@@ -43,12 +44,13 @@ jobs:
       - name: Update pin
         if: steps.check.outputs.changed == 'true'
         run: |
-          echo "${{ steps.get-sha.outputs.sha }}" > .upstream-hash
-          sed -i "s|^ARG UPSTREAM_SHA=.*|ARG UPSTREAM_SHA=${{ steps.get-sha.outputs.sha }}|" Dockerfile
+          SHA="${{ steps.get-sha.outputs.sha }}"
+          echo "$SHA" > .upstream-hash
+          sed -i "s|^ARG UPSTREAM_SHA=.*|ARG UPSTREAM_SHA=$SHA|" Dockerfile
           git config user.name "hermes-bot"
           git config user.email "hermes-bot@kadrlik.me"
           git add .upstream-hash Dockerfile
-          git commit -m "sync: pin to mainline ${{ steps.get-sha.outputs.sha }}"
+          git commit -m "sync: pin to mainline $SHA"
           git push origin HEAD:main
 
   build:
@@ -57,6 +59,16 @@ jobs:
     runs-on: rocm
     steps:
       - uses: actions/checkout@v4
+      - name: Resolve upstream SHA
+        id: resolve-sha
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            SHA="${{ needs.check-upstream.outputs.sha }}"
+          else
+            SHA=$(cat .upstream-hash | head -1 | tr -d '[:space:]')
+          fi
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+          echo "Building at SHA: $SHA"
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Log in to Gitea registry
@@ -84,4 +96,4 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           build-args: |
-            UPSTREAM_SHA=${{ steps.get-sha.outputs.sha }}
+            UPSTREAM_SHA=${{ steps.resolve-sha.outputs.sha }}
