@@ -46,7 +46,7 @@ jobs:
         if: steps.check.outputs.changed == 'true'
         run: |
           curl -s -X POST "${{ github.api_url }}/repos/${{ github.repository }}/issues" \
-            -H "Authorization: token ${{ secrets.GITEA_TOKEN }}" \
+            -H "Authorization: token ${{ secrets.ISSUE_TOKEN }}" \
             -H "Content-Type: application/json" \
             -d '{
               "title": "Upstream changes detected: ${{ env.UPSTREAM_REPO }}",
