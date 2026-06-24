@@ -91,7 +91,7 @@ jobs:
         with:
           registry: ${{ env.REGISTRY_GITEA }}
           username: mkadrlik
-          password: ${{ secrets.GITEA_REGISTRY_TOKEN }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:

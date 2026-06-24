@@ -1,1 +1,1 @@
-0a635dcd92ba66c75fccfef91c3e106f4668f367 Merge PR #14 — Enhance multimodal + spec decode in atomic-llama-cpp-turboquant
+d86eb0b8cd22507f05ba09975dcc979331ab62ba Merge PR #15 — Implement block-wise sparse + full-precision fallback
