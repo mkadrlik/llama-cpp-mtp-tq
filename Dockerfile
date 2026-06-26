@@ -1,9 +1,9 @@
 ###############################################################################
 # llama-cpp-mtp-tq
-# ROCm build of AtomicBot-ai/atomic-llama-cpp-turboquant with tbq3 + MTP.
+# ROCm build of AtomicBot-ai/atomic-llama-cpp-turboquant with tbq3 + NextN MTP.
 #
 # Source: AtomicBot-ai/atomic-llama-cpp-turboquant (feature/turboquant-kv-cache)
-#   — has TurboQuant tbq3 KV cache compression (~4.3×) + MTP speculative decoding
+#   — has TurboQuant tbq3 KV cache compression (~4.3×) + NextN speculative decoding
 #   for Qwen3.6 MTP models (no separate draft model required).
 #
 # ARG UPSTREAM_SHA — pin to a specific commit (CI auto-updates).
@@ -13,7 +13,7 @@
 FROM rocm/dev-ubuntu-24.04:7.2.4-complete AS builder
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG UPSTREAM_SHA=
+ARG UPSTREAM_SHA=d86eb0b8cd22507f05ba09975dcc979331ab62ba
 ARG UPSTREAM_REPO=https://github.com/AtomicBot-ai/atomic-llama-cpp-turboquant.git
 ARG UPSTREAM_BRANCH=feature/turboquant-kv-cache
 
@@ -26,7 +26,7 @@ RUN apt-get update && apt-get install -y \
     libopenblas-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Clone AtomicBot fork (has tbq3 KV + MTP + HIP/ROCm support)
+# Clone AtomicBot fork (has tbq3 KV + NextN MTP + HIP/ROCm support)
 RUN git clone --branch ${UPSTREAM_BRANCH} --depth 1 ${UPSTREAM_REPO} /opt/llama.cpp
 WORKDIR /opt/llama.cpp
 RUN if [ -n "${UPSTREAM_SHA}" ]; then \
@@ -75,12 +75,15 @@ COPY --from=builder /opt/rocm/lib/ /opt/rocm/lib/
 ENV LD_LIBRARY_PATH=/usr/local/lib
 
 # Default: serve with MTP speculative decoding + TurboQuant tbq3 KV cache
-# --spec-type draft-mtp: MTP speculative decoding (Qwen3.6 MTP heads baked into GGUF)
-# --spec-draft-n-max 2 / --spec-draft-n-min 1: draft token range
+# --spec-type draft-mtp: Multi-token prediction (NextN is the internal embedding
+#   mechanism used by draft-mtp for Qwen3.6 models with built-in MTP heads)
+# --spec-draft-n-max/min: replaces removed --draft-max/--draft-min
 # -ctk turbo3 -ctv turbo3: TurboQuant 3-bit KV cache (~4.3× compression)
+# Note: --model-draft is omitted; draft-mtp auto-discovers MTP heads from the
+# combined GGUF when no explicit draft model path is provided.
 ENTRYPOINT ["llama-server"]
 CMD ["--host", "0.0.0.0", "--port", "8080", \
      "-fa", "on", \
      "-ctk", "turbo3", "-ctv", "turbo3", \
-     "--spec-type", "draft-mtp", "--spec-draft-n-max", "2", "--spec-draft-n-min", "1", \
-     "--model-draft", "SAME_AS_MODEL"]
+     "--spec-type", "draft-mtp", \
+     "--spec-draft-n-max", "2", "--spec-draft-n-min", "1"]

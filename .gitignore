@@ -23,6 +23,9 @@ Thumbs.db
 # GGUF models (too large)
 *.gguf
 
+# Upstream tracking (force-added, excluded from GitHub mirror)
+.upstream-hash
+
 # Temp
 /tmp/
 *.tmp

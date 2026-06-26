@@ -1,47 +1,93 @@
-name: Build and Push
-run-name: ${{ gitea.actor }} build ${{ github.sha }}
+name: CI
+run-name: ${{ gitea.actor }} ci ${{ github.sha }}
+
+# Self-contained workflow - no external reusable workflow dependencies
+# Gitea Actions 1.26.1 cannot parse workflow_call with needs: dependencies
 
 on:
-  schedule:
-    - cron: '0 6 * * *'
   push:
-    branches:
-      - main
+    branches: [main, "fix/*"]
   pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * *"
   workflow_dispatch:
+    inputs:
+      release_type:
+        description: "SemVer bump type"
+        required: false
+        default: "auto"
+        type: choice
+        options: [auto, major, minor, patch]
 
 env:
-  REGISTRY_GITEA: nas.kadrlik.home:3042
-  REGISTRY_GHCR: ghcr.io
-  IMAGE_NAME: mkadrlik/llama-cpp-mtp-tq
-  UPSTREAM_REPO: AtomicBot-ai/atomic-llama-cpp-turboquant
+  IMAGE: ghcr.io/mkadrlik/llama-cpp-mtp-tq
+  GITEA_IMAGE: nas.kadrlik.home:3042/mkadrlik/llama-cpp-mtp-tq
+  UPSTREAM_REPO: https://github.com/AtomicBot-ai/atomic-llama-cpp-turboquant.git
   UPSTREAM_BRANCH: feature/turboquant-kv-cache
 
 jobs:
-  check-upstream:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+  validate-commits:
+    name: Validate commit messages
     runs-on: [self-hosted, linux]
-    outputs:
-      sha: ${{ steps.get-sha.outputs.sha }}
-      changed: ${{ steps.check.outputs.changed }}
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@v4
-      - name: Get upstream HEAD
-        id: get-sha
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Check conventional commits
         run: |
-          SHA=$(git ls-remote "https://github.com/${{ env.UPSTREAM_REPO }}.git" "refs/heads/${{ env.UPSTREAM_BRANCH }}" | cut -f1)
-          echo "sha=$SHA" >> $GITHUB_OUTPUT
-      - name: Check if changed
+          MSG=$(git log -1 --format="%s")
+          PATTERN='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert|merge)(\(.+\))?(!)?: .+$'
+          if ! echo "$MSG" | grep -qE "$PATTERN"; then
+            echo "::error::Invalid commit message: $MSG"
+            echo "::error::Expected format: type(scope)!: description"
+            echo "::error::Valid types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert, merge"
+            exit 1
+          fi
+          echo "Valid commit: $MSG"
+
+  check-upstream:
+    name: Check for upstream changes
+    runs-on: [self-hosted, linux]
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    outputs:
+      changed: ${{ steps.check.outputs.changed }}
+      new_sha: ${{ steps.check.outputs.new_sha }}
+      old_sha: ${{ steps.check.outputs.old_sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compare upstream hash
         id: check
         run: |
-          OLD=$(grep -v '^#' .upstream-hash | head -1 | awk '{print $1}' | tr -d '[:space:]')
-          NEW="${{ steps.get-sha.outputs.sha }}"
-          if [ "$OLD" != "$NEW" ]; then
+          CURRENT=$(git ls-remote "${UPSTREAM_REPO}" "${UPSTREAM_BRANCH}" | awk '{print $1}')
+          SAVED=$(grep -v '^#' .upstream-hash | head -1 | awk '{print $1}' | tr -d '[:space:]')
+          echo "old_sha=$SAVED" >> $GITHUB_OUTPUT
+          echo "new_sha=$CURRENT" >> $GITHUB_OUTPUT
+          if [ "$CURRENT" != "$SAVED" ]; then
             echo "changed=true" >> $GITHUB_OUTPUT
-            echo "::warning::Upstream changed! $OLD → $NEW"
+            echo "Upstream changed: ${SAVED:0:8} -> ${CURRENT:0:8}"
+            # Update .upstream-hash
+            echo "$CURRENT" > .upstream-hash
+            # Pin the exact SHA in Dockerfile via UPSTREAM_SHA build arg
+            sed -i "s/^ARG UPSTREAM_SHA=.*/ARG UPSTREAM_SHA=${CURRENT}/" Dockerfile
+            # Commit both changes
+            git config user.name "Gitea Actions"
+            git config user.email "actions@gitea.local"
+            git add .upstream-hash Dockerfile
+            git commit -m "chore: pin upstream SHA ${CURRENT:0:8} in Dockerfile"
+            git push origin HEAD
           else
             echo "changed=false" >> $GITHUB_OUTPUT
+            echo "No upstream changes detected"
           fi
+
       - name: Create issue if upstream changed
         if: steps.check.outputs.changed == 'true'
         run: |
@@ -50,15 +96,25 @@ jobs:
             -H "Content-Type: application/json" \
             -d '{
               "title": "Upstream changes detected: ${{ env.UPSTREAM_REPO }}",
-              "body": "New upstream commit: `${{ steps.get-sha.outputs.sha }}`\n\nPrevious: `$(grep -v '"'"'^#'"'"' .upstream-hash | head -1 | awk '"'"'{print $1}'"'"')`\n\n1. Review changes at https://github.com/${{ env.UPSTREAM_REPO }}/compare/$(grep -v '"'"'^#'"'"' .upstream-hash | head -1 | awk '"'"'{print $1}'"'"')...${{ steps.get-sha.outputs.sha }}\n2. Update `.upstream-hash`\n3. Build and test locally\n4. Commit and push\n\n_Generated by CI check-upstream job_"
+              "body": "New upstream commit: `${{ steps.check.outputs.new_sha }}`\n\nPrevious: `${{ steps.check.outputs.old_sha }}`\n\n1. Review changes at https://github.com/${{ env.UPSTREAM_REPO }}/compare/${{ steps.check.outputs.old_sha }}...${{ steps.check.outputs.new_sha }}\n2. `.upstream-hash` and Dockerfile have been auto-updated\n3. Build and test locally\n4. Commit and push\n\n_Generated by CI check-upstream job_"
             }'
 
   verify-patches:
-    if: github.event_name == 'pull_request'
+    name: Verify patches apply cleanly
     runs-on: [self-hosted, linux]
+    # Run on PRs (gate), schedule (after check-upstream updates hash), and push to main
+    if: >
+      (github.event_name == 'pull_request') ||
+      (github.event_name == 'schedule') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
     steps:
-      - uses: actions/checkout@v4
-      - run: |
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify .upstream-hash exists
+        run: |
           if [ ! -f .upstream-hash ]; then
             echo "::error::Missing .upstream-hash file"; exit 1
           fi
@@ -68,47 +124,249 @@ jobs:
           fi
           echo "Tracking SHA: $SHA (valid)"
 
-  build:
-    needs: [check-upstream]
-    if: always() && (needs.check-upstream.outputs.changed == 'true' || github.event_name != 'schedule')
-    runs-on: [self-hosted, rocm]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Resolve upstream SHA
-        id: resolve-sha
+      - name: Clone upstream at pinned SHA
         run: |
-          if [ "${{ github.event_name }}" = "schedule" ] && [ "${{ needs.check-upstream.outputs.changed }}" = "true" ]; then
-            SHA="${{ needs.check-upstream.outputs.sha }}"
+          SHA=$(grep '^ARG UPSTREAM_SHA=' Dockerfile | cut -d= -f2 || true)
+          retries=3
+          delay=5
+          if [ -z "$SHA" ]; then
+            echo "No UPSTREAM_SHA pinned, cloning branch HEAD"
+            for i in $(seq 1 $retries); do
+              echo "Attempt $i/$retries..."
+              if git clone --branch ${UPSTREAM_BRANCH} --depth 1 \
+                ${UPSTREAM_REPO} /tmp/upstream 2>&1; then
+                echo "Clone succeeded"
+                break
+              fi
+              echo "Clone failed, retrying in ${delay}s..."
+              sleep $delay
+            done
+            if [ ! -d /tmp/upstream/.git ]; then
+              echo "::error::Failed to clone upstream after $retries attempts"
+              exit 1
+            fi
           else
-            SHA=$(grep -v '^#' .upstream-hash | head -1 | awk '{print $1}' | tr -d '[:space:]')
+            echo "Cloning at pinned SHA: ${SHA:0:8}"
+            for i in $(seq 1 $retries); do
+              echo "Attempt $i/$retries..."
+              if git clone ${UPSTREAM_REPO} /tmp/upstream 2>&1; then
+                cd /tmp/upstream && git checkout "$SHA"
+                break
+              fi
+              echo "Clone failed, retrying in ${delay}s..."
+              sleep $delay
+            done
+            if [ ! -d /tmp/upstream/.git ]; then
+              echo "::error::Failed to clone upstream after $retries attempts"
+              exit 1
+            fi
           fi
-          echo "sha=$SHA" >> $GITHUB_OUTPUT
-          echo "Building at SHA: $SHA"
+
+      - name: Verify source files exist
+        run: |
+          # Check that the files our build expects are present upstream
+          ERR=0
+          for f in src/llama-kv-cache.cpp src/llama-kv-cache.h src/llama-context.cpp src/llama-context.h; do
+            if [ ! -f "/tmp/upstream/$f" ]; then
+              echo "::error::$f not found in upstream - build will fail"
+              ERR=1
+            else
+              echo "OK: $f"
+            fi
+          done
+          if [ "$ERR" -ne 0 ]; then
+            echo "Upstream source files missing. Pin an older SHA or update the build."
+            exit 1
+          fi
+          echo "All expected source files present upstream"
+
+  build:
+    name: Build and push Docker image
+    runs-on: [self-hosted, rocm]
+    needs: [verify-patches]
+    if: >
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'schedule')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      - name: Log in to Gitea registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY_GITEA }}
-          username: mkadrlik
-          password: ${{ secrets.REGISTRY_TOKEN }}
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY_GHCR }}
-          username: mkadrlik
-          password: ${{ secrets.GHCR_TOKEN }}
-      - name: Extract metadata
-        id: meta
+
+      - name: Generate version tags
+        id: tags
         run: |
-          SHA=$(grep -v '^#' .upstream-hash | head -1 | awk '{print $1}' | cut -c1-7)
-          DATE=$(date +%Y.%m.%d)
-          echo "tags=${{ env.REGISTRY_GITEA }}/${{ env.IMAGE_NAME }}:${DATE}-${SHA},${{ env.REGISTRY_GITEA }}/${{ env.IMAGE_NAME }}:${DATE},${{ env.REGISTRY_GITEA }}/${{ env.IMAGE_NAME }}:latest,${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${DATE}-${SHA},${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${DATE},${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_OUTPUT
-      - name: Build and push
-        uses: docker/build-push-action@v6
+          SHORT_SHA=$(git rev-parse --short=7 HEAD)
+          DATE_VERSION=$(date +%Y.%m.%d)
+          VERSION="${DATE_VERSION}-${SHORT_SHA}"
+          echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "date_version=${DATE_VERSION}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Tags: ${VERSION}, ${DATE_VERSION}, latest"
+
+      - name: Login to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.GHCR_USERNAME }}
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      - name: Extract UPSTREAM_SHA for cache bust
+        id: upstream
+        run: |
+          SHA=$(grep '^ARG UPSTREAM_SHA=' Dockerfile | cut -d= -f2 || true)
+          echo "sha=${SHA}" >> $GITHUB_OUTPUT
+          echo "Upstream SHA: ${SHA:-(unpinned, using branch HEAD)}"
+
+      - name: Build and push to ghcr.io
+        uses: docker/build-push-action@v5
         with:
           context: .
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
+          push: true
           build-args: |
-            UPSTREAM_SHA=${{ steps.resolve-sha.outputs.sha }}
+            UPSTREAM_SHA=${{ steps.upstream.outputs.sha }}
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.tags.outputs.version }}
+            ${{ env.IMAGE }}:${{ steps.tags.outputs.date_version }}
+            ${{ env.IMAGE }}:latest
+          cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
+          cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max
+
+  push-gitea-registry:
+    name: Push to Gitea Container Registry
+    runs-on: [self-hosted, rocm]
+    needs: [build]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Login to Gitea Container Registry
+        run: |
+          echo "${{ secrets.REGISTRY_TOKEN }}" | \
+            docker login nas.kadrlik.home:3042 -u mkadrlik --password-stdin
+
+      - name: Tag and push
+        run: |
+          docker pull ${{ env.IMAGE }}:latest
+          docker tag ${{ env.IMAGE }}:latest ${{ env.GITEA_IMAGE }}:latest
+          docker push ${{ env.GITEA_IMAGE }}:latest
+
+  mirror:
+    name: Mirror to GitHub
+    runs-on: [self-hosted, linux]
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Exclude .gitea and .upstream-hash from mirror
+        run: |
+          rm -rf .gitea/
+          rm -f .upstream-hash
+          git add -A
+          git commit --allow-empty -m "ci: exclude .gitea and .upstream-hash from GitHub mirror" || true
+
+      - name: Push to GitHub
+        run: |
+          git remote remove github 2>/dev/null || true
+          git remote add github "https://${{ secrets.GHCR_TOKEN }}@github.com/mkadrlik/llama-cpp-mtp-tq.git"
+          # SUPPLY CHAIN GUARD: Force push only. Never fetch from GitHub.
+          # Gitea is source of truth. GitHub is read-only replica.
+          git push github main --force --tags
+          echo "Mirrored to GitHub successfully"
+
+  semver-release:
+    name: SemVer release
+    runs-on: [self-hosted, rocm]
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version bump
+        id: version
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' || echo "0.1.0")
+          CURRENT="${LAST_TAG#v}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+
+          if [ "${{ github.event.inputs.release_type }}" = "auto" ]; then
+            COMMITS=$(git log ${LAST_TAG}..HEAD --oneline 2>/dev/null || git log --oneline -50)
+            if echo "$COMMITS" | grep -qE '(feat|fix|refactor)!|BREAKING CHANGE'; then
+              BUMP="major"
+            elif echo "$COMMITS" | grep -qE '^feat:'; then
+              BUMP="minor"
+            else
+              BUMP="patch"
+            fi
+          else
+            BUMP="${{ github.event.inputs.release_type }}"
+          fi
+
+          case $BUMP in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH + 1)) ;;
+          esac
+
+          NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "bump=$BUMP" >> $GITHUB_OUTPUT
+          echo "Bumping $LAST_TAG -> $NEW_VERSION ($BUMP)"
+
+      - name: Create and push tag
+        run: |
+          git config user.name "Gitea Actions"
+          git config user.email "actions@gitea.local"
+          git tag -a ${{ steps.version.outputs.version }} -m "Release ${{ steps.version.outputs.version }}"
+          git push origin ${{ steps.version.outputs.version }}
+          echo "Tagged and pushed: ${{ steps.version.outputs.version }}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.GHCR_USERNAME }}
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      - name: Extract UPSTREAM_SHA for cache bust
+        id: upstream
+        run: |
+          SHA=$(grep '^ARG UPSTREAM_SHA=' Dockerfile | cut -d= -f2 || true)
+          echo "sha=${SHA}" >> $GITHUB_OUTPUT
+
+      - name: Build and push release image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          build-args: |
+            UPSTREAM_SHA=${{ steps.upstream.outputs.sha }}
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.version.outputs.version }}
+            ${{ env.IMAGE }}:latest
+          cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
+          cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max
+
+      - name: Mirror tag to GitHub
+        if: github.ref == 'refs/heads/main'
+        run: |
+          rm -rf .gitea/
+          rm -f .upstream-hash
+          git add -A
+          git commit --allow-empty -m "ci: exclude .gitea and .upstream-hash from GitHub mirror" || true
+          git remote remove github 2>/dev/null || true
+          git remote add github "https://${{ secrets.GHCR_TOKEN }}@github.com/mkadrlik/llama-cpp-mtp-tq.git"
+          # SUPPLY CHAIN GUARD: Force push only. Never fetch from GitHub.
+          # Gitea is source of truth. GitHub is read-only replica.
+          git push github main --force --tags
+          echo "Mirrored tag to GitHub: ${{ steps.version.outputs.version }}"
