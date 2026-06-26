@@ -188,7 +188,8 @@ jobs:
     needs: [verify-patches]
     if: >
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'schedule')
+      (github.event_name == 'schedule') ||
+      (github.event_name == 'workflow_dispatch')
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -365,6 +366,16 @@ jobs:
             ${{ env.IMAGE }}:latest
           cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
           cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max
+
+      - name: Push to Gitea Container Registry
+        run: |
+          echo "${{ secrets.REGISTRY_TOKEN }}" | \
+            docker login nas.kadrlik.home:3042 -u mkadrlik --password-stdin
+          docker pull ${{ env.IMAGE }}:${{ steps.version.outputs.version }}
+          docker tag ${{ env.IMAGE }}:${{ steps.version.outputs.version }} ${{ env.GITEA_IMAGE }}:${{ steps.version.outputs.version }}
+          docker tag ${{ env.IMAGE }}:latest ${{ env.GITEA_IMAGE }}:latest
+          docker push ${{ env.GITEA_IMAGE }}:${{ steps.version.outputs.version }}
+          docker push ${{ env.GITEA_IMAGE }}:latest
 
       - name: Mirror tag to GitHub
         if: github.ref == 'refs/heads/main'
