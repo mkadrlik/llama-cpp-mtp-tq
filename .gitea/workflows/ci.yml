@@ -252,9 +252,11 @@ jobs:
           password: ${{ secrets.GHCR_TOKEN }}
 
       - name: Login to Gitea Container Registry
-        run: |
-          echo "${{ secrets.REGISTRY_TOKEN }}" | \
-            docker login nas.kadrlik.home:3042 -u mkadrlik --password-stdin
+        uses: docker/login-action@v3
+        with:
+          registry: nas.kadrlik.home:3042
+          username: mkadrlik
+          password: ${{ secrets.REGISTRY_TOKEN }}
 
       - name: Tag and push
         run: |
@@ -367,10 +369,15 @@ jobs:
           cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
           cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max
 
-      - name: Push to Gitea Container Registry
+      - name: Login to Gitea Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: nas.kadrlik.home:3042
+          username: mkadrlik
+          password: ${{ secrets.REGISTRY_TOKEN }}
+
+      - name: Tag and push to Gitea Registry
         run: |
-          echo "${{ secrets.REGISTRY_TOKEN }}" | \
-            docker login nas.kadrlik.home:3042 -u mkadrlik --password-stdin
           docker pull ${{ env.IMAGE }}:${{ steps.version.outputs.version }}
           docker tag ${{ env.IMAGE }}:${{ steps.version.outputs.version }} ${{ env.GITEA_IMAGE }}:${{ steps.version.outputs.version }}
           docker tag ${{ env.IMAGE }}:latest ${{ env.GITEA_IMAGE }}:latest
