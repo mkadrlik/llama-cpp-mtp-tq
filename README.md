@@ -101,7 +101,14 @@ docker run --rm \
 
 ## Lemonade Integration
 
-The lemonade-tq Docker build pulls from this image (`llama-cpp-mtp-tq:latest`) as the ROCm backend. After building and testing Phase 2, the recipe_options.json will be updated with the new flags.
+This image serves as the ROCm backend source for `lemonade-tq`. The lemonade-tq Dockerfile
+currently pulls `llama-server` from `${REGISTRY}/mkadrlik/llama-cpp-rocm-tq-ubuntu:latest`
+(Stage 1 `rocm_binaries`, the old TheTom/domvox TurboQuant fork without MTP).
+
+**Cutover** (after this image is built and verified):
+1. Update lemonade-tq Dockerfile line 26: `FROM ${REGISTRY}/mkadrlik/llama-cpp-mtp-tq:latest AS rocm_binaries`
+2. Update `recipe_options.json` for MTP model entries to add `turbo3` KV cache + `draft-mtp` spec flags
+3. Rebuild lemonade-tq image and verify llama-server works with lemonade's entrypoint wrapper
 
 ## CI Notes
 
