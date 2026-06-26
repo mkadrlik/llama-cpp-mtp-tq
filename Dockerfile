@@ -1,9 +1,9 @@
 ###############################################################################
 # llama-cpp-mtp-tq
-# ROCm build of AtomicBot-ai/atomic-llama-cpp-turboquant with tbq3 + NextN MTP.
+# ROCm build of AtomicBot-ai/atomic-llama-cpp-turboquant with tbq3 + MTP.
 #
 # Source: AtomicBot-ai/atomic-llama-cpp-turboquant (feature/turboquant-kv-cache)
-#   — has TurboQuant tbq3 KV cache compression (~4.3×) + NextN speculative decoding
+#   — has TurboQuant tbq3 KV cache compression (~4.3×) + MTP speculative decoding
 #   for Qwen3.6 MTP models (no separate draft model required).
 #
 # ARG UPSTREAM_SHA — pin to a specific commit (CI auto-updates).
@@ -26,7 +26,7 @@ RUN apt-get update && apt-get install -y \
     libopenblas-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Clone AtomicBot fork (has tbq3 KV + NextN MTP + HIP/ROCm support)
+# Clone AtomicBot fork (has tbq3 KV + MTP + HIP/ROCm support)
 RUN git clone --branch ${UPSTREAM_BRANCH} --depth 1 ${UPSTREAM_REPO} /opt/llama.cpp
 WORKDIR /opt/llama.cpp
 RUN if [ -n "${UPSTREAM_SHA}" ]; then \
@@ -74,13 +74,13 @@ COPY --from=builder /opt/rocm/lib/ /opt/rocm/lib/
 
 ENV LD_LIBRARY_PATH=/usr/local/lib
 
-# Default: serve with NextN speculative decoding + TurboQuant tbq3 KV cache
-# --model-draft SAME_AS_MODEL: Qwen3.6 MTP heads are baked into the combined GGUF
-# --spec-type nextn: AtomicBot's NextN variant of MTP
+# Default: serve with MTP speculative decoding + TurboQuant tbq3 KV cache
+# --spec-type draft-mtp: MTP speculative decoding (Qwen3.6 MTP heads baked into GGUF)
+# --spec-draft-n-max 2 / --spec-draft-n-min 1: draft token range
 # -ctk turbo3 -ctv turbo3: TurboQuant 3-bit KV cache (~4.3× compression)
 ENTRYPOINT ["llama-server"]
 CMD ["--host", "0.0.0.0", "--port", "8080", \
      "-fa", "on", \
      "-ctk", "turbo3", "-ctv", "turbo3", \
-     "--spec-type", "nextn", "--draft-max", "2", "--draft-min", "1", \
+     "--spec-type", "draft-mtp", "--spec-draft-n-max", "2", "--spec-draft-n-min", "1", \
      "--model-draft", "SAME_AS_MODEL"]

@@ -26,10 +26,10 @@ services:
       - -ctv
       - turbo3
       - --spec-type
-      - nextn
-      - --draft-max
+      - draft-mtp
+      - --spec-draft-n-max
       - "2"
-      - --draft-min
+      - --spec-draft-n-min
       - "1"
       - --model-draft
       - SAME_AS_MODEL

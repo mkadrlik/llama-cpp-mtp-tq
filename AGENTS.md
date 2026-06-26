@@ -1,12 +1,12 @@
 ---
 name: llama-cpp-mtp-tq
-description: ROCm build of AtomicBot-ai/atomic-llama-cpp-turboquant with tbq3 KV cache compression and NextN MTP speculative decoding
+description: ROCm build of AtomicBot-ai/atomic-llama-cpp-turboquant with tbq3 KV cache compression and MTP speculative decoding
 ---
 
 # llama-cpp-mtp-tq
 
 ROCm build of [AtomicBot-ai/atomic-llama-cpp-turboquant](https://github.com/AtomicBot-ai/atomic-llama-cpp-turboquant)
-with TurboQuant tbq3 KV cache compression (~4.3×) and NextN speculative decoding
+with TurboQuant tbq3 KV cache compression (~4.3×) and MTP speculative decoding
 for Qwen3.6 MoE models with built-in MTP heads.
 
 ## Purpose
@@ -19,7 +19,7 @@ models. Phase 2 combines MTP speculative decoding + tbq3 KV compression in one b
 - **Source:** AtomicBot-ai/atomic-llama-cpp-turboquant (feature/turboquant-kv-cache)
 - **Backend:** ROCm/HIP (gfx1100, 3× RX 7900 XT)
 - **KV Cache:** TurboQuant tbq3 (`-ctk turbo3 -ctv turbo3`, ~4.3× compression)
-- **Speculative Decoding:** NextN (`--spec-type nextn --draft-max 2 --draft-min 1`)
+- **Speculative Decoding:** MTP (`--spec-type draft-mtp --spec-draft-n-max 2 --spec-draft-n-min 1`)
 - **Draft Model:** Shared-model (`--model-draft SAME_AS_MODEL`) — reuses loaded target, no second mmap
 - **Multi-GPU:** Yes (3× RX 7900 XT, asymmetric PCIe, `--tensor-split 2,1,1`)
 
@@ -46,7 +46,7 @@ The draft context reuses the already-loaded target model (no second mmap).
 ### Phase 2 Flags
 
 ```
---spec-type nextn --draft-max 2 --draft-min 1 --model-draft SAME_AS_MODEL
+--spec-type draft-mtp --spec-draft-n-max 2 --spec-draft-n-min 1 --model-draft SAME_AS_MODEL
 -ctk turbo3 -ctv turbo3
 ```
 
@@ -64,7 +64,7 @@ The draft context reuses the already-loaded target model (no second mmap).
 | Phase | Source | KV Cache | Spec Decode | Status |
 |-------|--------|----------|-------------|--------|
 | 1 | ggml-org/llama.cpp (mainline) | q8_0 | `--spec-type draft-mtp` | ✅ Tested, cut over |
-| 2 | AtomicBot-ai/atomic-llama-cpp-turboquant | **tbq3** (turbo3) | `--spec-type nextn` | 🔄 Current |
+| 2 | AtomicBot-ai/atomic-llama-cpp-turboquant | **tbq3** (turbo3) | `--spec-type draft-mtp` | 🔄 Current |
 
 ## Lemonade Integration
 
