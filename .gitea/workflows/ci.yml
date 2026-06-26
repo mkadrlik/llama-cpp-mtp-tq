@@ -100,13 +100,15 @@ jobs:
             }'
 
   verify-patches:
-    name: Verify patches apply cleanly
+    name: Verify upstream source files
     runs-on: [self-hosted, linux]
-    # Run on PRs (gate), schedule (after check-upstream updates hash), and push to main
+    # Run on schedule, push to main, PRs, and workflow_dispatch
+    # (build job needs verify-patches; without dispatch coverage, build is skipped)
     if: >
-      (github.event_name == 'pull_request') ||
       (github.event_name == 'schedule') ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request') ||
+      (github.event_name == 'workflow_dispatch')
     steps:
       - name: Checkout
         uses: actions/checkout@v4
