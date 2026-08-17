@@ -1,8 +1,8 @@
 ###############################################################################
 # llama-cpp-mtp-tq
-# ROCm build of AtomicBot-ai/atomic-llama-cpp-turboquant with tbq3 + NextN MTP.
+# ROCm build of TheTom/llama-cpp-turboquant with tbq3 + NextN MTP.
 #
-# Source: AtomicBot-ai/atomic-llama-cpp-turboquant (feature/turboquant-kv-cache)
+# Source: TheTom/llama-cpp-turboquant (feature/turboquant-kv-cache)
 #   — has TurboQuant tbq3 KV cache compression (~4.3×) + NextN speculative decoding
 #   for Qwen3.6 MTP models (no separate draft model required).
 #
@@ -13,8 +13,8 @@
 FROM rocm/dev-ubuntu-24.04:7.2.4-complete AS builder
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG UPSTREAM_SHA=d86eb0b8cd22507f05ba09975dcc979331ab62ba
-ARG UPSTREAM_REPO=https://github.com/AtomicBot-ai/atomic-llama-cpp-turboquant.git
+ARG UPSTREAM_SHA=f6124e914f60a414a13dbf6d878ff107ac6432fb
+ARG UPSTREAM_REPO=https://github.com/TheTom/llama-cpp-turboquant.git
 ARG UPSTREAM_BRANCH=feature/turboquant-kv-cache
 
 # Install build deps
@@ -26,7 +26,7 @@ RUN apt-get update && apt-get install -y \
     libopenblas-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Clone AtomicBot fork (has tbq3 KV + NextN MTP + HIP/ROCm support)
+# Clone TheTom fork (has tbq3 KV + NextN MTP + HIP/ROCm support)
 RUN git clone --branch ${UPSTREAM_BRANCH} --depth 1 ${UPSTREAM_REPO} /opt/llama.cpp
 WORKDIR /opt/llama.cpp
 RUN if [ -n "${UPSTREAM_SHA}" ]; then \

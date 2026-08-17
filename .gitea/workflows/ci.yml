@@ -23,7 +23,7 @@ on:
 env:
   IMAGE: ghcr.io/mkadrlik/llama-cpp-mtp-tq
   GITEA_IMAGE: nas.kadrlik.home:3042/mkadrlik/llama-cpp-mtp-tq
-  UPSTREAM_REPO: https://github.com/AtomicBot-ai/atomic-llama-cpp-turboquant.git
+  UPSTREAM_REPO: https://github.com/TheTom/llama-cpp-turboquant.git
   UPSTREAM_BRANCH: feature/turboquant-kv-cache
 
 jobs:

@@ -70,7 +70,7 @@ docker compose up -d
 
 CI at `.gitea/workflows/ci.yml` handles:
 1. **validate-commits** — conventional commit format check
-2. **check-upstream** — detect AtomicBot upstream changes (daily schedule)
+2. **check-upstream** — detect upstream changes (daily schedule)
 3. **verify-patches** — verify upstream source files exist
 4. **build** — build + push to ghcr.io (3 tags: `{version}`, `{date}`, `latest`)
 5. **push-gitea-registry** — pull from ghcr.io, tag, push to Gitea registry
