@@ -13,7 +13,7 @@
 FROM rocm/dev-ubuntu-24.04:7.2.4-complete AS builder
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG UPSTREAM_SHA=6e09de1b44ae328f641d1367bb4c875a8ffab43f
+ARG UPSTREAM_SHA=ca28b4bc0e531635d83fe530c6e6e8d694c4330d
 ARG UPSTREAM_REPO=https://github.com/TheTom/llama-cpp-turboquant.git
 ARG UPSTREAM_BRANCH=feature/turboquant-kv-cache
 
