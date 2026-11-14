@@ -22,7 +22,7 @@ on:
 
 env:
   IMAGE: ghcr.io/mkadrlik/llama-cpp-mtp-tq
-  GITEA_IMAGE: nas.kadrlik.home:3042/mkadrlik/llama-cpp-mtp-tq
+  GITEA_IMAGE: nas.kadrlik.home:3042/homelab/llama-cpp-mtp-tq
   UPSTREAM_REPO: https://github.com/TheTom/llama-cpp-turboquant.git
   UPSTREAM_BRANCH: feature/turboquant-kv-cache
 
@@ -255,7 +255,7 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: nas.kadrlik.home:3042
-          username: mkadrlik
+          username: homelab-ci
           password: ${{ secrets.REGISTRY_TOKEN }}
 
       - name: Tag and push
@@ -373,7 +373,7 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: nas.kadrlik.home:3042
-          username: mkadrlik
+          username: homelab-ci
           password: ${{ secrets.REGISTRY_TOKEN }}
 
       - name: Tag and push to Gitea Registry

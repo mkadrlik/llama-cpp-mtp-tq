@@ -33,7 +33,7 @@ docker run --rm \
   -v /path/to/model.gguf:/models/model.gguf:ro \
   -p 8080:8080 \
   -e HSA_OVERRIDE_GFX_VERSION=11.0.0 \
-  nas.kadrlik.home:3042/mkadrlik/llama-cpp-mtp-tq:latest \
+  nas.kadrlik.home:3042/homelab/llama-cpp-mtp-tq:latest \
   -m /models/model.gguf \
   -c 8192 -fa on \
   -ctk turbo3 -ctv turbo3 \
@@ -50,7 +50,7 @@ docker run --rm \
   -p 8080:8080 \
   -e HSA_OVERRIDE_GFX_VERSION=11.0.0 \
   -e HIP_VISIBLE_DEVICES=0,1,2 \
-  nas.kadrlik.home:3042/mkadrlik/llama-cpp-mtp-tq:latest \
+  nas.kadrlik.home:3042/homelab/llama-cpp-mtp-tq:latest \
   -m /models/model.gguf \
   -c 8192 -fa on \
   -ctk turbo3 -ctv turbo3 \
